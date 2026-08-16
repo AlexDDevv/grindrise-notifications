@@ -96,6 +96,10 @@ un producteur en avance empile des jobs que personne ne sait lire. Le champ
 version abandonne le job avec un message explicite au lieu de l'interpréter de
 travers.
 
+`pnpm run check:contract` compare les deux fichiers octet pour octet et échoue
+si l'un a divergé sans l'autre — à lancer après toute modification du contrat,
+avant de commiter.
+
 ## Déployer sur CapRover
 
 Prérequis, une seule fois :

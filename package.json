@@ -9,6 +9,7 @@
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "test": "jest",
+    "check:contract": "./scripts/check-contract.sh",
     "sample": "tsx scripts/enqueue-sample.ts",
     "redis:up": "docker compose up -d",
     "redis:down": "docker compose down"
