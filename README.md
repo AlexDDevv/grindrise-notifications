@@ -64,7 +64,11 @@ Optionnelles :
 | `NOTIFICATIONS_QUEUE_NAME` | `notifications` | doit correspondre à celle de l'API |
 | `WORKER_CONCURRENCY` | `5` | jobs traités en parallèle |
 | `PORT` | `3001` | sonde `/health`, jamais exposée publiquement |
-| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` ou `error` |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn` ou `error` — voir la mise en garde ci-dessous pour `debug` |
+
+En `debug`, les réponses d'erreur brutes de Brevo sont journalisées telles quelles, corps compris
+— et ce corps peut contenir l'adresse email du destinataire pour un envoi refusé. À n'activer que
+ponctuellement, le temps de diagnostiquer un incident précis, jamais en continu en production.
 
 ## Expéditeur et délivrabilité
 
