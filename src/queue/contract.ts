@@ -24,12 +24,28 @@ export const LEVEL_UP_JOB_VERSION = 1;
  * — donc côté producteur. Les laisser côté API donnerait l'illusion que la
  * politique de reprise du worker se règle dans l'API.
  *
+ * `attempts` et `backoff` couvrent environ deux heures avant abandon
+ * (60 + 120 + 240 + 480 + 960 + 1920 + 3840 s ≈ 2 h 07). Ce n'est pas pour
+ * absorber un simple hoquet réseau — quelques secondes suffiraient — mais une
+ * vraie panne côté Brevo ou un dépassement du quota de 300 emails/jour du plan
+ * gratuit, qui se résorbe en minutes ou en heures, pas en secondes.
+ *
+ * `removeOnFail.age` (7 jours) est un choix assumé : garder le job en échec
+ * permet de le rejouer à la main depuis un tableau de bord BullMQ et de
+ * diagnostiquer ce qui a coincé. Mais ce choix a un effet de bord auquel il
+ * faut penser : le `jobId` d'un palier est déterministe (`levelUpJobId`), et
+ * tant qu'un job — même définitivement échoué — existe encore sous cet id,
+ * BullMQ ignore silencieusement tout nouvel `add` portant le même id. Un job
+ * qui a épuisé ses `attempts` garde donc son identifiant réservé pendant ces
+ * 7 jours : il ne se reproduit jamais tout seul, même si le joueur refranchit
+ * le même palier entre-temps. Il se rejoue à la main.
+ *
  * `removeOnComplete.age` en secondes : la déduplication par jobId ne tient que
  * tant que BullMQ garde trace du job. 24 h, très au-delà du plausible.
  */
 export const LEVEL_UP_JOB_OPTIONS = {
-  attempts: 5,
-  backoff: { type: 'exponential' as const, delay: 5_000 },
+  attempts: 8,
+  backoff: { type: 'exponential' as const, delay: 60_000 },
   removeOnComplete: { age: 86_400 },
   removeOnFail: { age: 604_800 },
 };
