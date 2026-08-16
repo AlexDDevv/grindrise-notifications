@@ -1,0 +1,9 @@
+# Redis de développement uniquement — la production utilise l'app one-click
+# CapRover. Aucun volume : une queue vide au redémarrage est le comportement
+# souhaité en local.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
