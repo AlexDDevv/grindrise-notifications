@@ -1,0 +1,28 @@
+{
+  "name": "grindrise-notifications",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Worker de notifications Grindrise : consomme la queue BullMQ et envoie les emails transactionnels.",
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "test": "jest",
+    "sample": "tsx scripts/enqueue-sample.ts",
+    "redis:up": "docker compose up -d",
+    "redis:down": "docker compose down"
+  },
+  "dependencies": {
+    "bullmq": "^6.1.1",
+    "ioredis": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^26.2.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
+  }
+}
