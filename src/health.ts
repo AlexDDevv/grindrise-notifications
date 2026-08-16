@@ -22,6 +22,15 @@ export function startHealthServer(port: number, worker: Worker): Server {
     res.end(JSON.stringify({ status: running ? 'ok' : 'stopped' }));
   });
 
+  // Sans cet écouteur, un échec de bind (port déjà occupé, port privilégié
+  // sans droits...) remonte comme exception non rattrapée et fait planter
+  // tout le process — job en cours compris. La sonde n'est qu'un accessoire
+  // de supervision : son échec ne doit jamais entraîner celui du worker, qui
+  // continue de consommer la queue même sans elle.
+  server.on('error', (error) => {
+    logger.error('Sonde de vie indisponible', { port, reason: error.message });
+  });
+
   server.listen(port, '0.0.0.0', () => {
     logger.info('Sonde de vie à l\'écoute', { port });
   });
