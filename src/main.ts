@@ -15,8 +15,8 @@ function main(): void {
     replyTo: config.brevoReplyTo,
   });
 
-  const worker = createWorker(config, email);
-  const health = startHealthServer(config.port, worker);
+  const { worker, connection } = createWorker(config, email);
+  const health = startHealthServer(config.port, worker, connection);
 
   logger.info('Worker à l\'écoute', {
     queue: config.queueName,
@@ -29,6 +29,20 @@ function main(): void {
   const shutdown = (signal: string): void => {
     logger.info('Arrêt demandé', { signal });
     health.close();
+
+    // Garde-fou : le timeout de 10 s sur l'appel Brevo borne un envoi normal,
+    // mais `worker.close()` peut aussi attendre un job coincé ailleurs (DNS,
+    // TCP qui ne répond jamais...). Sans cette limite, un arrêt qui traîne
+    // dépasserait le délai de grâce Docker (10 s) et se terminerait en
+    // SIGKILL — moins propre qu'un `process.exit(1)` volontaire et journalisé.
+    // `unref()` est indispensable : sans lui, ce minuteur à lui seul
+    // empêcherait le process de se terminer si l'arrêt réussit avant 15 s.
+    const forceExit = setTimeout(() => {
+      logger.error('Arrêt trop long, sortie forcée', { signal });
+      process.exit(1);
+    }, 15_000);
+    forceExit.unref();
+
     worker
       .close()
       .then(() => process.exit(0))

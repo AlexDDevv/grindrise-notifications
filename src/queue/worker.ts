@@ -43,7 +43,12 @@ export async function processJob(job: IncomingJob, email: EmailProvider): Promis
   }
 }
 
-export function createWorker(config: WorkerConfig, email: EmailProvider): Worker {
+/** `createWorker` rend aussi la connexion : c'est elle que la sonde de vie
+ * interroge pour savoir si Redis répond vraiment, au-delà du simple fait que
+ * `run()` a été appelé. */
+export type WorkerHandle = { worker: Worker; connection: IORedis };
+
+export function createWorker(config: WorkerConfig, email: EmailProvider): WorkerHandle {
   // `maxRetriesPerRequest: null` est exigé par BullMQ côté consommateur : le
   // worker doit attendre indéfiniment le retour de Redis plutôt qu'abandonner.
   const connection = new IORedis(config.redisUrl, { maxRetriesPerRequest: null });
@@ -69,5 +74,5 @@ export function createWorker(config: WorkerConfig, email: EmailProvider): Worker
     logger.error('Erreur du worker', { reason: error.message });
   });
 
-  return worker;
+  return { worker, connection };
 }
