@@ -4,6 +4,7 @@ import {
   type EmailMessage,
   type EmailProvider,
 } from './email-provider';
+import { logger } from '../logger';
 
 export type BrevoSender = {
   email: string;
@@ -12,6 +13,16 @@ export type BrevoSender = {
 };
 
 const ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
+
+/** Undici attend 300 s par défaut sans timeout explicite : un slot de
+ * traitement resterait immobilisé cinq minutes, et `worker.close()` attend ce
+ * job jusqu'au bout — largement au-delà du délai de grâce Docker (10 s). */
+const REQUEST_TIMEOUT_MS = 10_000;
+
+/** Tronque le corps avant de le journaliser en debug : diagnostic, pas archive. */
+function preview(body: string): string {
+  return body.length > 300 ? `${body.slice(0, 300)}…` : body;
+}
 
 /**
  * Envoi transactionnel via l'API HTTP de Brevo.
@@ -58,6 +69,10 @@ export class BrevoEmailProvider implements EmailProvider {
           accept: 'application/json',
         },
         body: JSON.stringify(payload),
+        // Un dépassement (AbortSignal.timeout) rejette avec une erreur comme
+        // n'importe quelle autre panne réseau : rattrapée par le `catch`
+        // ci-dessous, donc classée passagère — à rejouer, pas à abandonner.
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (cause) {
       throw new TransientEmailError(
@@ -69,14 +84,20 @@ export class BrevoEmailProvider implements EmailProvider {
 
     const body = await response.text().catch(() => '');
 
+    // Les réponses d'erreur Brevo (400 destinataire invalide/bloqué en tête)
+    // peuvent contenir l'adresse email du destinataire. Le corps ne va donc
+    // jamais dans `message` — ce que `worker.ts` journalise tel quel en warn
+    // ou en error — seulement en debug, désactivé par défaut (`LOG_LEVEL=info`).
+    // Le code HTTP suffit à diagnostiquer sans rouvrir les logs ; le corps
+    // reste disponible pour qui active le niveau debug en connaissance de cause.
+    logger.debug('Brevo a répondu en erreur', { status: response.status, body: preview(body) });
+
     // 429 = quota atteint, 5xx = panne du fournisseur. Les deux se rattrapent.
     if (response.status === 429 || response.status >= 500) {
-      throw new TransientEmailError(`Brevo a répondu ${response.status} : ${body}`);
+      throw new TransientEmailError(`Brevo a répondu ${response.status}.`);
     }
 
     // 4xx restants : clé invalide, expéditeur non validé, message refusé.
-    throw new PermanentEmailError(
-      `Brevo a refusé l'envoi (${response.status}) : ${body}`,
-    );
+    throw new PermanentEmailError(`Brevo a refusé l'envoi (${response.status}).`);
   }
 }
