@@ -2,8 +2,9 @@
 
 Checklist de reprise, écrite le 2026-08-16 et révisée le 2026-08-17. Le code est
 terminé et revu des deux côtés. Le compte Brevo existe, les deux dépôts sont
-poussés : ce qui reste demande un serveur. CapRover n'est pas un service
-hébergé, il s'installe sur une machine à soi.
+poussés, **le VPS est commandé et durci**. Ce qui reste tient à un nom de
+domaine : sans lui, CapRover ne peut ni servir de sous-domaines ni obtenir de
+certificat.
 
 Ce document se lit sans rien avoir en tête : il rappelle où en est le chantier
 avant de dire quoi faire.
@@ -35,8 +36,9 @@ Dans les deux dépôts, `main` est en retard sur `test`.
   de passe Redis mal recopié s'y voit immédiatement. L'API n'a pas cet
   équivalent.
 
-**Ce qui n'a jamais été fait** : aucun email réel n'a été envoyé, et rien n'est
-déployé — ni serveur, ni CapRover, ni Redis, ni API.
+**Ce qui n'a jamais été fait** : aucun email réel n'a été envoyé, et aucune app
+n'est déployée. Le serveur, lui, est prêt — voir l'étape 4. Il ne lui manque que
+CapRover, bloqué par l'absence de nom de domaine.
 
 ---
 
@@ -139,59 +141,145 @@ l'image.
 
 ---
 
-## 4. Provisionner le serveur et installer CapRover
+## 4. Le serveur
 
-CapRover s'installe sur une machine à soi. Il faut donc un VPS et un nom de
-domaine — le domaine n'est pas optionnel : sans wildcard DNS, ni sous-domaine par
-app ni HTTPS automatique.
+**Fait le 2026-08-17**, sauf CapRover lui-même. Le VPS est commandé, durci et
+prêt à recevoir l'installation.
 
-### Commander
+### Ce qui tourne
 
-- [ ] **VPS OVH**, gamme *Essential* : 2 vCore, 4 Go RAM, ~80 Go NVMe
-- [ ] **Datacenter** Gravelines, Strasbourg ou Roubaix — OVH propose aussi
-      Francfort, Londres et Varsovie, à ne pas prendre au hasard
-- [ ] **Ubuntu 24.04 LTS**, sans panneau de contrôle (ni Plesk, ni cPanel)
-- [ ] **Clé SSH** ajoutée à la commande — `~/.ssh/id_ed25519.pub` existe déjà
-- [ ] **Nom de domaine**, chez OVH aussi pour tout regrouper
+| | |
+|---|---|
+| Hébergeur | OVH, VPS `vps-9528c445` |
+| IPv4 | `92.222.80.54` |
+| IPv6 | `2001:41d0:404:200::8e56` |
+| Système | **Ubuntu 26.04 LTS** (« resolute »), noyau 7.0 |
+| Ressources | 2 vCPU, 3,7 Go RAM, 38 Go disque |
+| Swap | 2 Go, dans `/etc/fstab` |
+| Docker | 29.7.2, actif au démarrage |
+| Pare-feu | `ufw` actif : 22, 80, 443 |
+| Anti-intrusion | `fail2ban`, prison `sshd` |
+| Utilisateur | `ubuntu`, `sudo` sans mot de passe |
 
-Sur le dimensionnement : la stack au repos tient dans ~1 Go (CapRover ~450 Mo,
-Ubuntu ~200, API ~200, worker ~120, Redis ~50). Ce n'est pas le repos qui dicte
-les 4 Go, c'est le **build** : CapRover compile les images sur le serveur, et
-`pnpm install` + `tsc` peuvent réclamer 2 Go le temps d'un déploiement. Le
-palier à 2 Go échouerait là.
+Ubuntu 26.04 et non 24.04 : le script officiel de Docker la gère sans problème,
+vérifié. Le disque fait 38 Go et non 80 — sans conséquence, 2,6 Go étaient
+utilisés après installation de Docker.
 
-### Préparer la machine
+Le swap n'est pas décoratif : les VPS OVH n'en ont aucun, la stack au repos tient
+dans ~1 Go mais **le build en réclame jusqu'à 2**. CapRover compile les images
+sur le serveur ; sans swap, un `pnpm install` + `tsc` se fait tuer par l'OOM
+killer au lieu de ralentir.
 
-- [ ] Se connecter — les images OVH récentes ouvrent la session en `ubuntu`, pas
-      en `root` : `sudo -i` ensuite
-- [ ] `apt update && apt upgrade -y`
-- [ ] **Ajouter 2 Go de swap** — les VPS OVH n'en ont aucun, et un build sans
-      swap se fait tuer par l'OOM killer plutôt que ralentir :
+### Accès
 
 ```bash
-fallocate -l 2G /swapfile && chmod 600 /swapfile
-mkswap /swapfile && swapon /swapfile
-echo '/swapfile none swap sw 0 0' >> /etc/fstab
+ssh grindrise    # via ~/.ssh/config
 ```
 
-- [ ] **Docker** — `curl -fsSL https://get.docker.com | sh`
-- [ ] **Ports** — 80, 443, 3000, 996, 7946, 4789, 2377 ouverts. Le pare-feu OVH
-      est désactivé par défaut ; si `ufw` est actif sur la machine, ces ports
-      doivent y être autorisés.
-- [ ] **CapRover** :
+L'authentification par clé fonctionne, **et le mot de passe reste actif** — c'est
+volontaire : il faudra pouvoir installer une nouvelle clé depuis une autre
+machine. Ne désactiver `PasswordAuthentication` qu'une fois cette migration
+faite.
+
+`fail2ban` gère le bruit : 188 tentatives d'intrusion détectées et des bannis dès
+la première journée. C'est ce qui rend inutile le changement de port SSH souvent
+recommandé — voir « Pièges rencontrés ».
+
+En cas de perte d'accès IPv4, **l'IPv6 est un accès de secours indépendant** :
+
+```powershell
+ssh ubuntu@2001:41d0:404:200::8e56
+```
+
+Il a servi. La console KVM d'OVH (menu « ... » sur la fiche du VPS) reste le
+recours ultime, mais son clavier est en QWERTY et elle est bloquée par les
+bloqueurs de fenêtres surgissantes.
+
+### Installer CapRover
+
+Il ne reste que cette étape, et **elle exige d'ouvrir les ports d'abord** :
 
 ```bash
-docker run -p 80:80 -p 443:443 -p 3000:3000 -v /var/run/docker.sock:/var/run/docker.sock \
+sudo ufw allow 80,443,3000,996,7946,4789,2377/tcp
+sudo ufw allow 7946,4789,2377/udp
+```
+
+```bash
+sudo docker run -e ACCEPTED_TERMS=true \
+  -p 80:80 -p 443:443 -p 3000:3000 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
   -v /captain:/captain caprover/caprover
 ```
 
+7946, 4789 et 2377 ne servent qu'à Swarm entre plusieurs machines : refermables
+après l'installation sur un nœud unique.
+
 ### DNS et HTTPS
 
-- [ ] **Enregistrement A** chez OVH : `*.apps.tondomaine.fr` → IP du VPS
+- [ ] **Un seul domaine suffit** pour tous les services — CapRover fabrique un
+      sous-domaine par app
+- [ ] **Enregistrement A** chez OVH : `*.apps.tondomaine.fr` → `92.222.80.54`
 - [ ] Attendre la propagation — quelques minutes à quelques heures
 - [ ] `npm install -g caprover` sur la machine de développement
 - [ ] `caprover serversetup` : domaine racine, **changer le mot de passe
       `captain42`**, activer HTTPS et la redirection forcée
+- [ ] Refermer le port 3000 une fois le tableau de bord servi en HTTPS
+
+L'astérisque répond pour n'importe quel sous-domaine : aucune modification DNS ne
+sera nécessaire en ajoutant des apps. Le worker `notifications`, lui, n'a besoin
+d'aucun sous-domaine — il n'est joignable que par le réseau interne de Docker.
+
+Attention aux extensions `.app` : elles imposent le HTTPS au niveau des
+navigateurs (préchargement HSTS), donc aucun accès en HTTP clair. Un `.fr` ou un
+`.com` est plus souple pour une première installation.
+
+### Pièges rencontrés
+
+**`ufw` bloque l'installation de CapRover.** L'installateur teste le port 3000 en
+posant un écouteur ordinaire sur l'hôte — pas un port publié par Docker — donc
+`ufw` s'y applique pleinement et l'installation échoue sur `Port timed out: 3000`.
+D'où les règles à poser avant. Cela ne contredit pas le point suivant : ce sont
+deux mécanismes distincts.
+
+**`ufw` ne protège pas les ports publiés par Docker.** Docker insère ses règles
+de redirection en amont de la chaîne où `ufw` opère : un `ufw deny 3000`
+s'afficherait « actif » avec le port grand ouvert. Le seul levier correct est la
+chaîne `DOCKER-USER`. À garder en tête pour refermer le port 3000.
+
+**Ne pas changer le port SSH sur Ubuntu 24.04+.** `ssh.socket` remplace le démon
+classique : une directive `Port` dans `sshd_config` est ignorée, il faut
+surcharger l'unité systemd. Et surtout, `ListenStream=` (vide) **annule les
+adresses d'écoute par défaut** — redéclarer `ListenStream=22` seul produit une
+socket IPv6 uniquement, qui n'accepte aucune connexion IPv4. Résultat : accès
+coupé sur tous les ports à la fois, alors que le service tourne. Si le changement
+est vraiment souhaité, déclarer les quatre adresses explicitement
+(`0.0.0.0:22`, `[::]:22`, `0.0.0.0:<port>`, `[::]:<port>`) et garder une session
+de secours ouverte. Le gain reste marginal face à `fail2ban`.
+
+### Migrer vers une autre machine
+
+Rien de ce qui précède n'est lié à la machine qui a configuré le serveur. Seules
+les clés dans `authorized_keys` le sont.
+
+```bash
+# 1. sur la nouvelle machine
+ssh-keygen -t ed25519 -f ~/.ssh/grindrise
+ssh-copy-id -i ~/.ssh/grindrise.pub ubuntu@92.222.80.54   # mot de passe
+
+# 2. VERIFIER que la nouvelle cle fonctionne avant la suite
+ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54
+
+# 3. ne garder qu'elle
+cat ~/.ssh/grindrise.pub | ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54 \
+  'cat > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
+
+# 4. seulement alors
+echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/99-durcissement.conf
+sudo systemctl reload ssh
+```
+
+Restent alors deux traces mineures : `/var/log/auth.log`, qui expire de lui-même
+en quatre semaines, et `~/.bash_history` sur le serveur.
 
 ---
 
