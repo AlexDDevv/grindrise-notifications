@@ -176,10 +176,12 @@ killer au lieu de ralentir.
 ssh grindrise    # via ~/.ssh/config
 ```
 
-L'authentification par clé fonctionne, **et le mot de passe reste actif** — c'est
-volontaire : il faudra pouvoir installer une nouvelle clé depuis une autre
-machine. Ne désactiver `PasswordAuthentication` qu'une fois cette migration
-faite.
+Les deux clés qui ouvrent aujourd'hui ce serveur viennent de l'ordinateur du
+travail et **sont à remplacer** — voir « Migrer vers l'ordinateur personnel ».
+
+L'authentification par mot de passe **reste active**, et c'est volontaire : c'est
+elle qui permettra d'installer la clé de la machine personnelle. Ne désactiver
+`PasswordAuthentication` qu'une fois cette migration faite.
 
 `fail2ban` gère le bruit : 188 tentatives d'intrusion détectées et des bannis dès
 la première journée. C'est ce qui rend inutile le changement de port SSH souvent
@@ -191,9 +193,12 @@ En cas de perte d'accès IPv4, **l'IPv6 est un accès de secours indépendant** 
 ssh ubuntu@2001:41d0:404:200::8e56
 ```
 
-Il a servi. La console KVM d'OVH (menu « ... » sur la fiche du VPS) reste le
-recours ultime, mais son clavier est en QWERTY et elle est bloquée par les
-bloqueurs de fenêtres surgissantes.
+Il a servi. Attention toutefois : ce secours repose sur une clé du travail, il
+disparaîtra donc à la migration.
+
+La console KVM d'OVH (menu « ... » sur la fiche du VPS) reste le recours ultime,
+mais son clavier est en QWERTY et elle est bloquée par les bloqueurs de fenêtres
+surgissantes.
 
 ### Installer CapRover
 
@@ -256,30 +261,75 @@ est vraiment souhaité, déclarer les quatre adresses explicitement
 (`0.0.0.0:22`, `[::]:22`, `0.0.0.0:<port>`, `[::]:<port>`) et garder une session
 de secours ouverte. Le gain reste marginal face à `fail2ban`.
 
-### Migrer vers une autre machine
+### Migrer vers l'ordinateur personnel — à faire
 
-Rien de ce qui précède n'est lié à la machine qui a configuré le serveur. Seules
-les clés dans `authorized_keys` le sont.
+**Le serveur a été configuré depuis un ordinateur du travail.** Rien de ce qui
+précède n'en dépend : le swap, Docker, `ufw`, `fail2ban` vivent sur le VPS et
+ignorent tout de la machine qui les a installés. Il n'y a donc rien à refaire.
+
+**Sauf les clés SSH.** Elles sont la seule trace, et il y en a deux, toutes deux
+issues de l'ordinateur du travail — les deux doivent disparaître :
+
+| Empreinte | Commentaire | Origine |
+|---|---|---|
+| `SHA256:GPOv…` | `alexis.delporte@likewatt.com` | posée par OVH à la commande ; sert aussi à GitHub |
+| `SHA256:9C0i…` | `dalexis@LIKEWATT-ADP` | générée pendant la configuration |
+
+La marche à suivre, **depuis l'ordinateur personnel** :
 
 ```bash
-# 1. sur la nouvelle machine
+# 1. generer une cle neuve, sur la machine perso
 ssh-keygen -t ed25519 -f ~/.ssh/grindrise
-ssh-copy-id -i ~/.ssh/grindrise.pub ubuntu@92.222.80.54   # mot de passe
 
-# 2. VERIFIER que la nouvelle cle fonctionne avant la suite
+# 2. l'installer (demande le mot de passe : c'est pour ca qu'il reste actif)
+ssh-copy-id -i ~/.ssh/grindrise.pub ubuntu@92.222.80.54
+
+# 3. VERIFIER qu'elle fonctionne — ne rien supprimer avant d'avoir vu ce prompt
 ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54
 
-# 3. ne garder qu'elle
+# 4. ecraser authorized_keys : les deux cles du travail disparaissent ici
 cat ~/.ssh/grindrise.pub | ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54 \
   'cat > ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys'
 
-# 4. seulement alors
-echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/99-durcissement.conf
-sudo systemctl reload ssh
+# 5. controler qu'il ne reste que la nouvelle
+ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54 'ssh-keygen -lf ~/.ssh/authorized_keys'
+
+# 6. seulement alors, couper le mot de passe
+ssh -i ~/.ssh/grindrise ubuntu@92.222.80.54 \
+  "echo 'PasswordAuthentication no' | sudo tee /etc/ssh/sshd_config.d/99-durcissement.conf && sudo systemctl reload ssh"
 ```
 
-Restent alors deux traces mineures : `/var/log/auth.log`, qui expire de lui-même
-en quatre semaines, et `~/.bash_history` sur le serveur.
+L'ordre n'est pas négociable : l'étape 4 retire les seules clés qui donnent accès
+au serveur, et l'étape 6 retire le mot de passe qui sert de filet. Inverser, c'est
+se retrouver dehors avec pour seul recours la console KVM d'OVH.
+
+> **L'étape 4 supprime aussi l'accès de secours par IPv6 depuis PowerShell.**
+> C'est la clé `SHA256:GPOv…` qui l'autorisait — celle qui a permis de rattraper
+> l'incident du port SSH. Après migration, le secours redevient la console KVM.
+
+Recréer `~/.ssh/config` sur la machine perso :
+
+```
+Host grindrise
+    HostName 92.222.80.54
+    User ubuntu
+    IdentityFile ~/.ssh/grindrise
+    IdentitiesOnly yes
+```
+
+**GitHub est un lien distinct**, que la manœuvre ci-dessus ne coupe pas : le
+compte personnel `AlexDDevv` s'authentifie aujourd'hui avec la clé du travail.
+Générer une seconde clé sur la machine perso, l'ajouter dans *Settings → SSH and
+GPG keys*, puis y supprimer l'ancienne.
+
+**Sur l'ordinateur du travail**, avant de le rendre : `~/.ssh/grindrise` et
+`~/.ssh/grindrise.pub`, l'entrée dans `~/.ssh/config`, la ligne du VPS dans
+`~/.ssh/known_hosts`, et les deux clones — ils contiennent le `.env`, donc la clé
+API Brevo, qu'il vaut mieux régénérer depuis le tableau de bord une fois chez
+soi.
+
+Restent alors deux traces mineures côté serveur : `/var/log/auth.log`, qui expire
+de lui-même en quatre semaines, et `~/.bash_history`.
 
 ---
 
