@@ -21,7 +21,10 @@ set -euo pipefail
 WORKER_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_CONTRACT="$WORKER_ROOT/src/queue/contract.ts"
 
-API_PATH="${1:-${GRINDRISE_API_PATH:-/home/alexis/GrindRise}}"
+# Défaut relatif à $HOME : le chemin absolu codé en dur ici visait un nom
+# d'utilisateur qui n'est pas celui de cette machine, et la vérification
+# échouait donc en code 2 sans jamais comparer les deux fichiers.
+API_PATH="${1:-${GRINDRISE_API_PATH:-$HOME/GrindRise}}"
 REMOTE_CONTRACT="$API_PATH/backend/src/modules/notifications/contract.ts"
 
 if [ ! -f "$LOCAL_CONTRACT" ]; then
