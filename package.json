@@ -7,10 +7,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file=.env src/main.ts",
     "test": "jest",
     "check:contract": "./scripts/check-contract.sh",
-    "sample": "tsx scripts/enqueue-sample.ts",
+    "sample": "tsx --env-file=.env scripts/enqueue-sample.ts",
     "redis:up": "docker compose up -d",
     "redis:down": "docker compose down"
   },
