@@ -1,26 +1,59 @@
 # Déploiement du service de notifications
 
 Checklist de reprise, écrite le 2026-08-16, révisée le 2026-08-18. Le code est
-terminé et revu des deux côtés. Le compte Brevo existe, les deux dépôts sont
-poussés, **le VPS est commandé et durci**, et `grindrise.fr` est acheté.
-
-**Point de reprise au 2026-08-18** — deux choses bloquent l'installation de
-CapRover, et une seule demande une action :
-
-1. L'enregistrement DNS `*.apps` → `92.222.80.54` **n'est pas dans la zone OVH**.
-   À vérifier et poser. Voir « DNS et HTTPS ».
-2. L'AFNIC n'a pas encore publié la délégation de `grindrise.fr` : les résolveurs
-   publics répondent `NXDOMAIN`. Se règle tout seul en quelques heures.
-
-Le second a probablement masqué le premier — impossible de vérifier une entrée de
-zone tant que la délégation n'est pas publiée. Une seule vérification tranchera
-les deux.
-
-La validation locale de l'étape 3, elle, **est faite** : un email réel est parti
-et a été reçu le 2026-08-18. Toute la chaîne est prouvée en dehors de CapRover.
+terminé et revu des deux côtés.
 
 Ce document se lit sans rien avoir en tête : il rappelle où en est le chantier
 avant de dire quoi faire.
+
+---
+
+## Point de reprise au 2026-08-18, fin de journée
+
+Les sections détaillées ci-dessous n'ont pas encore été réécrites : elles le
+seront quand tout tournera de bout en bout. En attendant, **ce bloc fait foi**.
+
+**Ce qui est fait et vérifié :**
+
+- **Chaîne prouvée en local** — un email réel est parti et a été reçu (étape 3)
+- **Serveur** — VPS OVH durci : swap, Docker, `ufw`, `fail2ban` (voir étape 4)
+- **DNS** — `*.apps.grindrise.fr` → `92.222.80.54`, délégation AFNIC publiée
+- **CapRover 1.15.2 installé et configuré** — tableau de bord en HTTPS sur
+  `https://captain.apps.grindrise.fr`, certificat Let's Encrypt valide jusqu'au
+  2026-11-16, mot de passe `captain42` remplacé, redirection HTTP forcée
+- **Port 3000 fermé** au trafic internet par l'unité systemd
+  `caprover-firewall.service` — le tout revérifié après redémarrage
+- **Brevo** — `grindrise.fr` authentifié, expéditeur `notifications@grindrise.fr`
+  créé, l'ancienne adresse `@gmail.com` supprimée, `BREVO_SENDER_EMAIL` à jour
+
+**Ce qui reste, dans cet ordre :**
+
+1. **Corriger `POST /workouts`** dans le monorepo — voir « À corriger avant de
+   déployer ». À faire **avant** l'étape 4 ci-dessous, sinon une `REDIS_URL`
+   erronée fige la requête sans rien signaler.
+2. **Redis** — One-Click App depuis l'interface CapRover, mot de passe à relever
+3. **API** — créer l'app, variables Supabase, **sans `REDIS_URL`**, déployer
+4. **Worker `notifications`** — « Do not expose as web-app », trois variables
+5. **`REDIS_URL` sur l'API** en dernier : c'est ce qui ouvre le robinet
+6. **Test réel** — une séance qui fait franchir un niveau
+
+**Décisions prises :**
+
+- Déploiement depuis la branche **`test`** dans les deux dépôts. Fusion vers
+  `main` seulement quand tout fonctionnera de bout en bout.
+- Redis créé **par l'interface web**, pas en ligne de commande.
+- Domaine racine CapRover : **`apps.grindrise.fr`** (l'outil préfixe `captain.`).
+
+**Deux points ouverts, sans blocage :**
+
+- `BREVO_REPLY_TO` est vide et aucune boîte n'existe derrière
+  `notifications@grindrise.fr` : Brevo expédie sans problème — prouver la
+  propriété du domaine suffit — mais une réponse de joueur serait perdue. Le
+  remède le plus simple est `BREVO_REPLY_TO=<adresse personnelle>` ; une
+  redirection OVH gratuite rendrait l'adresse réellement joignable.
+- `pnpm run sample` **sans argument écrit à `BREVO_SENDER_EMAIL`**, donc
+  désormais à une adresse sans boîte. Passer le destinataire explicitement :
+  `pnpm run sample mon.adresse@exemple.fr`.
 
 ---
 
@@ -52,8 +85,8 @@ Dans les deux dépôts, `main` est en retard sur `test`.
   de passe Redis mal recopié s'y voit immédiatement. L'API n'a pas cet
   équivalent.
 
-**Ce qui reste à faire** : aucune app n'est déployée. Le serveur est prêt — voir
-l'étape 4 — il ne lui manque que CapRover, bloqué par l'enregistrement DNS.
+**Ce qui reste à faire** : aucune app n'est déployée. Le serveur et CapRover sont
+en place — voir le point de reprise en tête de document pour l'état exact.
 
 ---
 
