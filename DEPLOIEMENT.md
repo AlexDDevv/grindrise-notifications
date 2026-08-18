@@ -16,8 +16,8 @@ Le second a probablement masqué le premier — impossible de vérifier une entr
 zone tant que la délégation n'est pas publiée. Une seule vérification tranchera
 les deux.
 
-Indépendamment de tout ça, **la validation locale de l'étape 3 reste à finir** :
-elle ne dépend ni du domaine ni du serveur.
+La validation locale de l'étape 3, elle, **est faite** : un email réel est parti
+et a été reçu le 2026-08-18. Toute la chaîne est prouvée en dehors de CapRover.
 
 Ce document se lit sans rien avoir en tête : il rappelle où en est le chantier
 avant de dire quoi faire.
@@ -37,6 +37,9 @@ Dans les deux dépôts, `main` est en retard sur `test`.
 
 **Ce qui fonctionne déjà**, vérifié et non supposé :
 
+- **la chaîne complète a envoyé un vrai email**, le 2026-08-18 : job déposé dans
+  Redis, consommé par le worker, accepté par l'API Brevo, reçu dans la boîte du
+  destinataire. C'est la seule preuve qui compte, et elle est faite ;
 - le service consomme une queue BullMQ et envoie par l'API Brevo, derrière une
   interface `EmailProvider` qui rend un changement de fournisseur trivial ;
 - l'image Docker se construit (60 Mo, sans aucun secret dedans — vérifié en
@@ -49,9 +52,8 @@ Dans les deux dépôts, `main` est en retard sur `test`.
   de passe Redis mal recopié s'y voit immédiatement. L'API n'a pas cet
   équivalent.
 
-**Ce qui n'a jamais été fait** : aucun email réel n'a été envoyé, et aucune app
-n'est déployée. Le serveur, lui, est prêt — voir l'étape 4. Il ne lui manque que
-CapRover, bloqué par l'absence de nom de domaine.
+**Ce qui reste à faire** : aucune app n'est déployée. Le serveur est prêt — voir
+l'étape 4 — il ne lui manque que CapRover, bloqué par l'enregistrement DNS.
 
 ---
 
@@ -100,17 +102,19 @@ fusionner `test` dans `main` d'abord, soit déployer `test` en l'assumant.
 
 ## 3. Valider la chaîne en local
 
-Cette étape est la seule qui prouve que tout fonctionne bout en bout, et le seul
-moyen de voir partir un vrai email sans serveur. Ses deux prérequis manquants —
-le script d'injection et une clé Brevo — existent maintenant.
+**Fait le 2026-08-18** — email envoyé et reçu. C'était la seule étape prouvant
+que tout fonctionne bout en bout, et le seul moyen de le faire sans serveur.
 
 - [x] Renseigner `.env` à partir de `.env.example` (clé Brevo + adresse validée)
-- [ ] `pnpm install` si `node_modules` est absent
-- [ ] `pnpm run redis:up` — Redis local via Docker
-- [ ] `pnpm run dev` dans un terminal, attendre `Worker à l'écoute`
-- [ ] `pnpm run sample` dans un second terminal
-- [ ] Vérifier la réception de l'email
+- [x] `pnpm install` si `node_modules` est absent
+- [x] `pnpm run redis:up` — Redis local via Docker
+- [x] `pnpm run dev` dans un terminal, attendre `Worker à l'écoute`
+- [x] `pnpm run sample` dans un second terminal
+- [x] Vérifier la réception de l'email
 - [ ] `pnpm run redis:down` en fin de séance
+
+La procédure reste valable pour rejouer la chaîne après toute modification du
+worker, du template ou du contrat.
 
 Un succès est silencieux : `Job terminé` est journalisé en `debug`, donc invisible
 avec le `LOG_LEVEL=info` par défaut. Seuls les échecs parlent. Pour suivre le
