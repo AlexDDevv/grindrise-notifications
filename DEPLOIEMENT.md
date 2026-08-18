@@ -1,10 +1,23 @@
 # Déploiement du service de notifications
 
-Checklist de reprise, écrite le 2026-08-16 et révisée le 2026-08-17. Le code est
+Checklist de reprise, écrite le 2026-08-16, révisée le 2026-08-18. Le code est
 terminé et revu des deux côtés. Le compte Brevo existe, les deux dépôts sont
-poussés, **le VPS est commandé et durci**. Ce qui reste tient à un nom de
-domaine : sans lui, CapRover ne peut ni servir de sous-domaines ni obtenir de
-certificat.
+poussés, **le VPS est commandé et durci**, et `grindrise.fr` est acheté.
+
+**Point de reprise au 2026-08-18** — deux choses bloquent l'installation de
+CapRover, et une seule demande une action :
+
+1. L'enregistrement DNS `*.apps` → `92.222.80.54` **n'est pas dans la zone OVH**.
+   À vérifier et poser. Voir « DNS et HTTPS ».
+2. L'AFNIC n'a pas encore publié la délégation de `grindrise.fr` : les résolveurs
+   publics répondent `NXDOMAIN`. Se règle tout seul en quelques heures.
+
+Le second a probablement masqué le premier — impossible de vérifier une entrée de
+zone tant que la délégation n'est pas publiée. Une seule vérification tranchera
+les deux.
+
+Indépendamment de tout ça, **la validation locale de l'étape 3 reste à finir** :
+elle ne dépend ni du domaine ni du serveur.
 
 Ce document se lit sans rien avoir en tête : il rappelle où en est le chantier
 avant de dire quoi faire.
@@ -144,7 +157,8 @@ l'image.
 ## 4. Le serveur
 
 **Fait le 2026-08-17**, sauf CapRover lui-même. Le VPS est commandé, durci et
-prêt à recevoir l'installation.
+prêt à recevoir l'installation : les ports qu'elle réclame sont ouverts depuis le
+2026-08-18.
 
 ### Ce qui tourne
 
@@ -157,7 +171,7 @@ prêt à recevoir l'installation.
 | Ressources | 2 vCPU, 3,7 Go RAM, 38 Go disque |
 | Swap | 2 Go, dans `/etc/fstab` |
 | Docker | 29.7.2, actif au démarrage |
-| Pare-feu | `ufw` actif : 22, 80, 443 |
+| Pare-feu | `ufw` actif : 22, 80, 443, 3000, 996, 7946, 4789, 2377 |
 | Anti-intrusion | `fail2ban`, prison `sshd` |
 | Utilisateur | `ubuntu`, `sudo` sans mot de passe |
 
@@ -221,22 +235,66 @@ après l'installation sur un nœud unique.
 
 ### DNS et HTTPS
 
-- [ ] **Un seul domaine suffit** pour tous les services — CapRover fabrique un
-      sous-domaine par app
-- [ ] **Enregistrement A** chez OVH : `*.apps.tondomaine.fr` → `92.222.80.54`
-- [ ] Attendre la propagation — quelques minutes à quelques heures
+**Domaine retenu : `grindrise.fr`**, acheté chez OVH le 2026-08-18 à 15h07 UTC,
+expiration le 2027-08-18. `grindrise.com` était déjà pris par une marque de
+vêtements ; les recherches INPI et EUIPO sur « grindrise » n'ont rien donné, donc
+aucune marque enregistrée ne couvre la France sur ce nom.
+
+Un `.fr` plutôt qu'un `.app` : ce dernier impose le HTTPS au niveau des
+navigateurs (préchargement HSTS), donc aucun accès en HTTP clair — gênant
+justement pendant l'installation, avant que Let's Encrypt ait délivré le
+certificat. Le `.fr` est aussi moins cher.
+
+État au 2026-08-18 en fin de journée :
+
+| | |
+|---|---|
+| Enregistrement au registre | fait, statut « add period » |
+| Serveurs de noms déclarés | `ns106.ovh.net`, `dns106.ovh.net` |
+| Délégation publiée par l'AFNIC | **non** — résolveurs publics en `NXDOMAIN` |
+| Zone chez OVH | par défaut : apex et `www` vers le parking `213.186.33.5` |
+| Enregistrement `*.apps` | **absent** de la zone |
+
+Reste donc à faire :
+
+- [ ] **Vérifier la zone DNS** chez OVH — l'entrée `*.apps` n'y figurait pas.
+      Type **A**, sous-domaine **`*.apps`** (ne pas retaper `.grindrise.fr`, le
+      champ l'affiche déjà), cible **`92.222.80.54`**. OVH demande une
+      confirmation en deux temps ; sans elle, rien n'est enregistré.
+- [ ] Attendre la délégation AFNIC — quelques heures, rien à faire
 - [ ] `npm install -g caprover` sur la machine de développement
-- [ ] `caprover serversetup` : domaine racine, **changer le mot de passe
-      `captain42`**, activer HTTPS et la redirection forcée
+- [ ] `caprover serversetup` avec **`apps.grindrise.fr`** comme domaine racine.
+      Commande interactive : elle demande un mot de passe (**changer
+      `captain42`**) et une adresse email pour Let's Encrypt. Activer HTTPS et la
+      redirection forcée.
 - [ ] Refermer le port 3000 une fois le tableau de bord servi en HTTPS
 
-L'astérisque répond pour n'importe quel sous-domaine : aucune modification DNS ne
-sera nécessaire en ajoutant des apps. Le worker `notifications`, lui, n'a besoin
-d'aucun sous-domaine — il n'est joignable que par le réseau interne de Docker.
+Les apps vivront sous `captain.apps.grindrise.fr`, `api.apps.grindrise.fr`, etc.
+Le wildcard sur `*.apps` et non sur `*` laisse `grindrise.fr` et
+`www.grindrise.fr` libres pour un futur site vitrine, et évite de repeindre le
+DNS à chaque app ajoutée. Le worker `notifications` n'a besoin d'aucun
+sous-domaine : il n'est joignable que par le réseau interne de Docker.
 
-Attention aux extensions `.app` : elles imposent le HTTPS au niveau des
-navigateurs (préchargement HSTS), donc aucun accès en HTTP clair. Un `.fr` ou un
-`.com` est plus souple pour une première installation.
+**Diagnostiquer le DNS sans dépendre de la propagation.** `dig` est installé sur
+le VPS, ce qui permet d'interroger les serveurs d'OVH directement — la zone y est
+consultable avant que l'AFNIC ne l'ait publiée :
+
+```bash
+ssh grindrise "dig +short @ns106.ovh.net captain.apps.grindrise.fr A"
+```
+
+Depuis une machine sans `dig`, un résolveur public en HTTPS suffit :
+
+```bash
+curl -s 'https://dns.google/resolve?name=captain.apps.grindrise.fr&type=A'
+```
+
+`"Status":3` signifie NXDOMAIN. Pour savoir si le domaine est enregistré malgré
+tout — ce qui distingue une délégation en attente d'une erreur de saisie :
+
+```bash
+curl -s https://rdap.nic.fr/domain/grindrise.fr
+```
 
 ### Pièges rencontrés
 
