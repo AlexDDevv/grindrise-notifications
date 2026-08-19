@@ -30,24 +30,30 @@ avant de dire quoi faire.
 - **Producteur connecté** — le container de l'API tient une connexion TCP
   établie vers `srv-captain--redis:6379`
 
-**Ce qui reste :**
+**Le chantier est terminé.** Les deux derniers points ont été levés le
+2026-08-19 :
 
-1. **Test réel depuis l'app mobile** — enregistrer de vraies séances jusqu'à
-   franchir un palier. C'est le seul maillon jamais exercé : `enqueueLevelUp`
-   déclenché par une vraie montée de niveau. Ce test valide en prime le chemin
-   mobile → API, que rien n'a encore emprunté.
-2. **Fusionner `test` dans `main`** dans les deux dépôts, une fois le point 1
-   concluant.
+- **La montée de niveau réelle est prouvée** — le maillon qui n'avait jamais été
+  exercé. Une séance enregistrée par `POST /workouts` a fait passer un compte du
+  niveau 1 au niveau 2 ; l'API a journalisé « Notification de palier 2
+  produite », le worker « Email de palier envoyé » 172 ms plus tard, et Brevo a
+  confirmé l'email « Niveau 2 atteint » en `delivered`.
+- **`test` est fusionné dans `main`** dans les deux dépôts.
 
 **Décisions prises :**
 
-- Déploiement depuis la branche **`test`** dans les deux dépôts. Fusion vers
-  `main` seulement quand tout fonctionnera de bout en bout.
+- Déploiement depuis **`main`** dans les deux dépôts, depuis la fusion du
+  2026-08-19. Auparavant depuis `test`.
 - Domaine racine CapRover : **`apps.grindrise.fr`** (l'outil préfixe `captain.`).
-- Le test réel se fait **depuis l'app**, pas par injection : `POST /workouts`
-  écrit dans la base de production, et de fausses séances y créditeraient de
-  l'XP réelle, consommeraient une fenêtre anti-triche et débloqueraient des
-  passages narratifs — sans retour en arrière.
+- **Le test réel n'a finalement pas eu lieu en production, et c'est mieux
+  ainsi.** La décision initiale — le faire depuis l'app, contre la production,
+  faute d'alternative — a été remplacée : un **environnement de test** complet a
+  été monté le 2026-08-19 précisément pour lever l'interdit. Second projet
+  Supabase, apps `redis-test` / `api-test` / `notifications-test` sous un Project
+  CapRover `test`. De fausses séances en production auraient crédité de l'XP
+  réelle, consommé une fenêtre anti-triche et débloqué des passages narratifs,
+  sans retour en arrière ; le maillon est désormais exerçable autant de fois
+  qu'on veut, sans conséquence.
 
 **Un piège à retenir :** `pnpm run sample` **sans argument écrit à
 `BREVO_SENDER_EMAIL`**, donc à `notifications@grindrise.fr`, derrière laquelle
@@ -62,10 +68,11 @@ Deux dépôts sont concernés.
 
 | Dépôt | Chemin local | Branche | État |
 |---|---|---|---|
-| Service de notifications | `~/grindrise-notifications` | `test` | 48 tests verts, poussé |
-| Monorepo Grindrise | `~/GrindRise` | `test` | 4 commits ajoutés, 90 tests verts, poussé |
+| Service de notifications | `~/grindrise-notifications` | `main` | 48 tests verts, poussé |
+| Monorepo Grindrise | `~/GrindRise` | `main` | 92 tests verts, poussé |
 
-Dans les deux dépôts, `main` est en retard sur `test`.
+Depuis la fusion du 2026-08-19, `main` et `test` portent le même arbre dans les
+deux dépôts. C'est `main` qui fait foi.
 
 **Ce qui fonctionne déjà**, vérifié et non supposé :
 
@@ -83,8 +90,8 @@ Dans les deux dépôts, `main` est en retard sur `test`.
   de passe Redis mal recopié s'y voit immédiatement. L'API n'a pas cet
   équivalent.
 
-**Ce qui reste à faire** : le test réel depuis l'app mobile, puis la fusion vers
-`main`. Tout le reste est déployé et vérifié — voir l'état en tête de document.
+**Il ne reste rien de ce chantier.** Tout est déployé, et la chaîne est prouvée
+de bout en bout jusqu'à l'email de palier — voir l'état en tête de document.
 
 ---
 
@@ -132,9 +139,9 @@ réponse se perdrait, d'où `BREVO_REPLY_TO` renseigné avec une adresse réelle
 `git@github.com:AlexDDevv/grindrise-notifications.git`, branches `main` et `test`
 à jour côté distant, et l'accès fonctionne.
 
-**Décision prise** : on déploie depuis `test`, et on fusionnera vers `main`
-seulement quand le test réel sera concluant. `main` reste donc en retard dans
-les deux dépôts, en connaissance de cause.
+**Décision prise, puis honorée** : on a déployé depuis `test` jusqu'à ce que le
+test réel soit concluant, et `test` a été fusionné dans `main` le 2026-08-19.
+C'est désormais `main` qui se déploie.
 
 ---
 
