@@ -541,12 +541,22 @@ en plus le piège restant en **échec de build bruyant** — une archive du seul
 sous-arbre `backend` n'a pas de `./backend/captain-definition` à sa racine, donc
 elle est refusée au lieu de livrer du code périmé.
 
-> **Reste à faire sur l'app `api` de production.** Son
-> `captainDefinitionRelativeFilePath` vaut encore `./captain-definition`. Le
-> passer à `./backend/captain-definition` est un réglage de build : il ne
-> redémarre rien et ne change pas ce qui tourne. Mais il **engage** la méthode —
-> après ce changement, la méthode historique par archive du sous-arbre échoue.
-> À faire au prochain déploiement, pas avant, et en même temps que l'habitude.
+**Appliqué sur l'app `api` de production le 2026-08-19.** Son
+`captainDefinitionRelativeFilePath` vaut `./backend/captain-definition`, et le
+premier déploiement par branche a produit la version `v2` portant
+`gitHash=7089505bac77` — la première fois qu'on sait, sans rien extraire, quel
+code tourne dans cette app. La méthode historique par archive du sous-arbre
+**échoue désormais**, et c'est l'effet recherché.
+
+Où se trouve le champ, parce qu'il n'est pas là où on le cherche : app → onglet
+**Déploiement** (pas *Configurations de l'App*), **tout en bas**, sous
+*« Method 6: Deploy via ImageName »*. Le champ est préfixé « chemin de
+captain-definition » et **grisé** ; il faut cliquer **« Éditer »** à côté pour le
+déverrouiller, puis **« Enregistrer & Redémarrer »**.
+
+Ce bouton porte bien son nom : **il recrée le container**. Le réglage lui-même
+n'est lu qu'au build, mais l'enregistrer relance l'app — quelques secondes
+d'interruption. Sans gravité pour une API sans état, à condition de le savoir.
 
 ### Pièges rencontrés — apps CapRover
 
