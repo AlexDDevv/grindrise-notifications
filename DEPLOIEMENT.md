@@ -457,22 +457,89 @@ l'ajout de cette variable, en dernier, qui ouvre le robinet.
 
 ### Déployer depuis un sous-dossier du monorepo
 
-`caprover deploy -b test` lancé depuis `~/GrindRise/backend` affiche
+`caprover deploy -b main` lancé depuis `~/GrindRise/backend` affiche
 *« You are not in a git root directory »* et se rabat sur l'envoi du dossier tel
 qu'il est sur le disque — état de travail, pas la branche commitée, et
-potentiellement `node_modules`. Passer par une archive explicite :
+potentiellement `node_modules`. Le réflexe a d'abord été de contourner par une
+archive explicite du sous-arbre :
 
 ```bash
-git -C ~/GrindRise archive --format=tar.gz -o /tmp/api.tar.gz test:backend
+# Méthode historique. Marche, mais voir le piège ci-dessous.
+git -C ~/GrindRise archive --format=tar.gz -o /tmp/api.tar.gz main:backend
 caprover deploy -n grindrise -a api -t /tmp/api.tar.gz
 ```
 
-`test:backend` archive le **sous-arbre** : `captain-definition` se retrouve à la
-racine de l'archive, sans le reste du monorepo. 132 Ko au lieu de plusieurs
-centaines de mégaoctets.
+**Mieux : laisser CapRover lire le monorepo.** Le champ
+`captainDefinitionRelativeFilePath` de l'app (App Configs) accepte un chemin
+dans l'arborescence. Réglé à `./backend/captain-definition`, on déploie depuis
+la **racine** du monorepo, qui est bien une racine git, donc `-b` fonctionne :
 
-Depuis `~/grindrise-notifications`, qui est une racine de dépôt, `-b test`
-fonctionne directement.
+```bash
+cd ~/GrindRise
+caprover deploy -n grindrise -a api -b main
+```
+
+Vérifié le 2026-08-19 sur `api-test` : le build passe et le contexte Docker est
+bien `backend/`, pas la racine — le `COPY package.json pnpm-lock.yaml ./` du
+Dockerfile prend donc les bons fichiers. Ça se vérifie tout seul : `backend/` a
+son propre `pnpm-lock.yaml` (219 Ko) alors que celui de la racine ne contient
+que la CLI Supabase (4,7 Ko), et il n'y a pas de `pnpm run build` à la racine —
+si le contexte était la racine, le build échouerait bruyamment.
+
+Le CLI affiche au passage *« No captain-definition was found in main
+directory »*. C'est un **avertissement attendu**, et il le dit lui-même :
+« unless you have specified a special path ». Le déploiement se poursuit.
+
+Trois raisons de préférer cette méthode :
+
+1. **Le commit est enregistré.** Le CLI journalise *« Using last commit on
+   "main": 7089505… »* et CapRover garde le `gitHash` sur la version déployée.
+   Un déploiement par archive le laisse **vide** — c'est pour ça qu'on ne peut
+   pas savoir, après coup, quel code tourne dans l'app `api`, alors qu'on le
+   sait pour `notifications`.
+2. **Rien à regénérer**, donc rien qui puisse être périmé. Voir le piège
+   ci-dessous.
+3. Le surcoût est nul : l'archive du monorepo entier fait 294 Ko contre 132 Ko
+   pour le seul `backend/`.
+
+Depuis `~/grindrise-notifications`, qui est déjà une racine de dépôt, `-b main`
+fonctionne sans réglage particulier.
+
+### Piège — le CLI mémorise la source de déploiement, pas la branche
+
+Le CLI garde dans `~/.config/configstore/caprover.json` (`DeployedDirs`) ce qu'on
+lui a donné la dernière fois, **par répertoire courant**. C'est ce que rejoue
+`caprover deploy -d`, et c'est aussi la valeur proposée par défaut aux invites.
+
+Deux façons de se faire piéger, les deux silencieuses :
+
+- **Une branche mémorisée.** Après la fusion de `test` dans `main`, l'entrée de
+  `~/grindrise-notifications` portait encore `branchToPush: test`. Un
+  `caprover deploy -d` aurait redéployé `test` en croyant livrer `main`. Corrigé
+  le 2026-08-19, mais à revérifier après chaque changement de branche
+  d'intégration.
+- **Une archive mémorisée.** Pire : l'entrée de `~/GrindRise/backend` portait un
+  `tarFilePath` pointant un fichier `/tmp` d'une session de travail terminée. Le
+  fichier existait toujours, figé à son contenu de plusieurs heures plus tôt. Un
+  `caprover deploy -d` y serait reparti **sans jamais lire le dépôt**. Ce
+  jour-là le contenu était identique à `main:backend` — vérifié par extraction
+  et comparaison fichier par fichier — donc sans conséquence ; au premier
+  changement dans `backend/`, on aurait livré l'ancien code en croyant livrer
+  `main`. Entrée supprimée le 2026-08-19.
+
+D'où la préférence pour `-b <branche>` explicite : une branche ne peut pas être
+périmée, une archive sur disque oui. Et régler
+`captainDefinitionRelativeFilePath` à `./backend/captain-definition` transforme
+en plus le piège restant en **échec de build bruyant** — une archive du seul
+sous-arbre `backend` n'a pas de `./backend/captain-definition` à sa racine, donc
+elle est refusée au lieu de livrer du code périmé.
+
+> **Reste à faire sur l'app `api` de production.** Son
+> `captainDefinitionRelativeFilePath` vaut encore `./captain-definition`. Le
+> passer à `./backend/captain-definition` est un réglage de build : il ne
+> redémarre rien et ne change pas ce qui tourne. Mais il **engage** la méthode —
+> après ce changement, la méthode historique par archive du sous-arbre échoue.
+> À faire au prochain déploiement, pas avant, et en même temps que l'habitude.
 
 ### Pièges rencontrés — apps CapRover
 
