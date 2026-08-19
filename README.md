@@ -106,22 +106,15 @@ avant de commiter.
 
 ## Déployer sur CapRover
 
-Prérequis, une seule fois :
-
-1. **Redis** — CapRover > Apps > One-Click Apps > Redis, nommée `redis`. Noter le
-   mot de passe généré. Ne pas l'exposer publiquement : les deux apps
-   l'atteignent par `srv-captain--redis:6379` sur le réseau interne.
-2. **App** — Create New App, nommée `notifications`, sans « Has Persistent Data ».
-3. **App Configs** — renseigner les variables ci-dessus, puis Save & Update.
-4. **Cocher « Do not expose as web-app »** — ce service ne publie rien.
-
-Puis, à chaque déploiement :
+**Tout est dans [`DEPLOIEMENT.md`](DEPLOIEMENT.md)** : le serveur, CapRover, le
+DNS, Redis, Brevo, les variables et les pièges. En résumé :
 
 ```bash
-caprover deploy   # depuis la racine de ce dépôt, choisir l'app `notifications`
+caprover deploy -n grindrise -a notifications -b main        # production
+caprover deploy -n grindrise -a notifications-test -b main   # test
 ```
 
-Variante par webhook : dans App Configs > Deployment, connecter le dépôt GitHub
-et la branche `main`. Chaque push déclenche alors le déploiement.
+Depuis la racine de ce dépôt, qui est une racine git. Passer `-b` explicitement :
+le CLI mémorise sinon la dernière source utilisée, qui peut être périmée.
 
 Vérifier après déploiement que les logs affichent `Worker à l'écoute`.
