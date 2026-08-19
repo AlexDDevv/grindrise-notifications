@@ -6,3 +6,9 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Documents de travail : notes d'exploitation, plans, journaux de chantier.
+# Ils ne suivent pas le code et n'ont pas à voyager avec lui.
+# Attention : ce dossier ne vit que sur la machine courante — le recopier
+# avant de changer de poste, rien ne le sauvegarde.
+docs/
