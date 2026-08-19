@@ -15,6 +15,14 @@ export type EmailMessage = {
   subject: string;
   html: string;
   text: string;
+  /**
+   * En-têtes bruts du message (`List-Unsubscribe`, aujourd'hui).
+   *
+   * Ils sont ici et pas dans le gabarit parce qu'ils ne font pas partie du
+   * contenu : un gabarit décrit ce que le destinataire lit, un en-tête ce que
+   * son client mail interprète. Le fournisseur les transmet tels quels.
+   */
+  headers?: Record<string, string>;
 };
 
 export interface EmailProvider {

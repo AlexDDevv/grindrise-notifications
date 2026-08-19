@@ -109,7 +109,11 @@ toujours, mais il est déclaré **facultatif** dans le contrat. C'est ce qui
 permet au worker neuf — déployé en premier — de traiter les jobs empilés par
 l'API d'avant, qui ne le connaissait pas. Le rendre obligatoire les tuerait en
 `InvalidJobError`, donc sans reprise possible. Ce worker ne fabrique aucun
-jeton : il recopie l'URL signée par l'API dans le pied de l'email.
+jeton : il recopie l'URL signée par l'API dans le pied de l'email, et la reprend
+dans les en-têtes `List-Unsubscribe` / `List-Unsubscribe-Post` (RFC 2369 et
+8058) — d'où le bouton « Se désabonner » affiché par le client mail lui-même.
+Ces en-têtes ne sont posés que si le job porte une URL : les annoncer sans elle
+donnerait un bouton qui échoue en silence.
 
 ## Déployer sur CapRover
 

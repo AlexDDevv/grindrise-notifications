@@ -59,6 +59,12 @@ export class BrevoEmailProvider implements EmailProvider {
       payload.replyTo = { email: this.sender.replyTo };
     }
 
+    // Omis quand il n'y a rien à transmettre : Brevo refuse un objet `headers`
+    // vide en 400, ce qui classerait l'envoi en échec définitif.
+    if (message.headers && Object.keys(message.headers).length > 0) {
+      payload.headers = message.headers;
+    }
+
     let response: Response;
     try {
       response = await fetch(ENDPOINT, {

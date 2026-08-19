@@ -179,3 +179,40 @@ describe('BrevoEmailProvider', () => {
     expect(loggedTexts.some((text) => text.includes(emailInBody))).toBe(false);
   });
 });
+
+describe('BrevoEmailProvider — en-têtes bruts', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('transmet les en-têtes du message à Brevo', async () => {
+    const fetchSpy = respondWith(201);
+    const provider = new BrevoEmailProvider('xkeysib-test', {
+      email: 'expediteur@exemple.fr',
+      name: 'Grindrise',
+    });
+
+    await provider.send({
+      ...message,
+      headers: { 'List-Unsubscribe': '<https://api.exemple.test/u?token=a.b>' },
+    });
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string).headers).toEqual({
+      'List-Unsubscribe': '<https://api.exemple.test/u?token=a.b>',
+    });
+  });
+
+  it('omet le champ headers quand il n’y a rien à transmettre', async () => {
+    // Brevo refuse un objet `headers` vide en 400, donc en échec définitif :
+    // un job qui ne se rejouerait jamais, pour un champ sans contenu.
+    const fetchSpy = respondWith(201);
+    const provider = new BrevoEmailProvider('xkeysib-test', {
+      email: 'expediteur@exemple.fr',
+      name: 'Grindrise',
+    });
+
+    await provider.send({ ...message, headers: {} });
+
+    const [, init] = fetchSpy.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).not.toHaveProperty('headers');
+  });
+});

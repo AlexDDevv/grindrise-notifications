@@ -1,4 +1,5 @@
 import type { EmailProvider } from '../email/email-provider';
+import { listUnsubscribeHeaders } from '../email/list-unsubscribe';
 import { renderLevelUpEmail } from '../email/templates/level-up';
 import { logger } from '../logger';
 import { assertLevelUpJob } from '../queue/contract';
@@ -20,6 +21,11 @@ export async function handleLevelUp(data: unknown, email: EmailProvider): Promis
     subject: rendered.subject,
     html: rendered.html,
     text: rendered.text,
+    // Absents quand le job vient d'une API antérieure au désabonnement : sans
+    // URL, promettre un désabonnement en un clic serait un mensonge.
+    ...(job.unsubscribeUrl
+      ? { headers: listUnsubscribeHeaders(job.unsubscribeUrl) }
+      : {}),
   });
 
   // Ni l'adresse ni le pseudo dans les logs : le profileId suffit au support.

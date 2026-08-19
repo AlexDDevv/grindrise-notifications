@@ -65,3 +65,29 @@ describe('handleLevelUp', () => {
     await expect(handleLevelUp(job, provider)).rejects.toBeInstanceOf(PermanentEmailError);
   });
 });
+
+describe('handleLevelUp — désabonnement en un clic', () => {
+  const url = 'https://api.exemple.test/notifications/unsubscribe?token=abc.def';
+
+  it('assortit l’envoi des en-têtes List-Unsubscribe', async () => {
+    const { provider, sent } = fakeProvider();
+
+    await handleLevelUp({ ...job, unsubscribeUrl: url }, provider);
+
+    expect(sent[0].headers).toEqual({
+      'List-Unsubscribe': `<${url}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    });
+  });
+
+  it('n’en met aucun quand le job ne porte pas de lien', async () => {
+    // Le cas des jobs empilés avant la mesure, pendant la fenêtre de bascule :
+    // annoncer un désabonnement en un clic sans URL donnerait un bouton qui
+    // échoue en silence.
+    const { provider, sent } = fakeProvider();
+
+    await handleLevelUp(job, provider);
+
+    expect(sent[0].headers).toBeUndefined();
+  });
+});
