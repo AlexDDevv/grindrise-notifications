@@ -8,10 +8,7 @@ avant de dire quoi faire.
 
 ---
 
-## Point de reprise au 2026-08-18, fin de journée
-
-Les sections détaillées ci-dessous n'ont pas encore été réécrites : elles le
-seront quand tout tournera de bout en bout. En attendant, **ce bloc fait foi**.
+## État au 2026-08-19 — déployé
 
 **Ce qui est fait et vérifié :**
 
@@ -24,36 +21,38 @@ seront quand tout tournera de bout en bout. En attendant, **ce bloc fait foi**.
 - **Port 3000 fermé** au trafic internet par l'unité systemd
   `caprover-firewall.service` — le tout revérifié après redémarrage
 - **Brevo** — `grindrise.fr` authentifié, expéditeur `notifications@grindrise.fr`
-  créé, l'ancienne adresse `@gmail.com` supprimée, `BREVO_SENDER_EMAIL` à jour
+  créé, l'ancienne adresse `@gmail.com` supprimée
+- **`POST /workouts` corrigé** — commit `dd36349` du monorepo, `contract.ts`
+  vérifié identique au jumeau
+- **Les trois apps tournent** — `redis`, `api`, `notifications`
+- **Chaîne de production prouvée** — un job injecté dans le Redis de production a
+  été consommé par le worker déployé et l'email est arrivé
+- **Producteur connecté** — le container de l'API tient une connexion TCP
+  établie vers `srv-captain--redis:6379`
 
-**Ce qui reste, dans cet ordre :**
+**Ce qui reste :**
 
-1. **Corriger `POST /workouts`** dans le monorepo — voir « À corriger avant de
-   déployer ». À faire **avant** l'étape 4 ci-dessous, sinon une `REDIS_URL`
-   erronée fige la requête sans rien signaler.
-2. **Redis** — One-Click App depuis l'interface CapRover, mot de passe à relever
-3. **API** — créer l'app, variables Supabase, **sans `REDIS_URL`**, déployer
-4. **Worker `notifications`** — « Do not expose as web-app », trois variables
-5. **`REDIS_URL` sur l'API** en dernier : c'est ce qui ouvre le robinet
-6. **Test réel** — une séance qui fait franchir un niveau
+1. **Test réel depuis l'app mobile** — enregistrer de vraies séances jusqu'à
+   franchir un palier. C'est le seul maillon jamais exercé : `enqueueLevelUp`
+   déclenché par une vraie montée de niveau. Ce test valide en prime le chemin
+   mobile → API, que rien n'a encore emprunté.
+2. **Fusionner `test` dans `main`** dans les deux dépôts, une fois le point 1
+   concluant.
 
 **Décisions prises :**
 
 - Déploiement depuis la branche **`test`** dans les deux dépôts. Fusion vers
   `main` seulement quand tout fonctionnera de bout en bout.
-- Redis créé **par l'interface web**, pas en ligne de commande.
 - Domaine racine CapRover : **`apps.grindrise.fr`** (l'outil préfixe `captain.`).
+- Le test réel se fait **depuis l'app**, pas par injection : `POST /workouts`
+  écrit dans la base de production, et de fausses séances y créditeraient de
+  l'XP réelle, consommeraient une fenêtre anti-triche et débloqueraient des
+  passages narratifs — sans retour en arrière.
 
-**Deux points ouverts, sans blocage :**
-
-- `BREVO_REPLY_TO` est vide et aucune boîte n'existe derrière
-  `notifications@grindrise.fr` : Brevo expédie sans problème — prouver la
-  propriété du domaine suffit — mais une réponse de joueur serait perdue. Le
-  remède le plus simple est `BREVO_REPLY_TO=<adresse personnelle>` ; une
-  redirection OVH gratuite rendrait l'adresse réellement joignable.
-- `pnpm run sample` **sans argument écrit à `BREVO_SENDER_EMAIL`**, donc
-  désormais à une adresse sans boîte. Passer le destinataire explicitement :
-  `pnpm run sample mon.adresse@exemple.fr`.
+**Un piège à retenir :** `pnpm run sample` **sans argument écrit à
+`BREVO_SENDER_EMAIL`**, donc à `notifications@grindrise.fr`, derrière laquelle
+aucune boîte n'existe. Passer le destinataire explicitement :
+`pnpm run sample mon.adresse@exemple.fr`.
 
 ---
 
@@ -78,15 +77,14 @@ Dans les deux dépôts, `main` est en retard sur `test`.
 - l'image Docker se construit (60 Mo, sans aucun secret dedans — vérifié en
   inspectant l'image) ;
 - l'API NestJS produit un job quand un joueur franchit un niveau, en best-effort :
-  une panne de Redis survenue **après** le démarrage n'a aucun effet sur
-  `POST /workouts`. Le cas d'un Redis jamais joignable, lui, n'est pas couvert —
-  voir « À corriger avant de déployer » ;
+  une panne de Redis n'a aucun effet sur `POST /workouts`, y compris quand Redis
+  n'a jamais été joignable — c'est l'objet du correctif `dd36349` ;
 - le `/health` **du worker** répond 503 si Redis n'est pas joignable, donc un mot
   de passe Redis mal recopié s'y voit immédiatement. L'API n'a pas cet
   équivalent.
 
-**Ce qui reste à faire** : aucune app n'est déployée. Le serveur et CapRover sont
-en place — voir le point de reprise en tête de document pour l'état exact.
+**Ce qui reste à faire** : le test réel depuis l'app mobile, puis la fusion vers
+`main`. Tout le reste est déployé et vérifié — voir l'état en tête de document.
 
 ---
 
@@ -107,17 +105,24 @@ Le plan gratuit plafonne à 300 emails/jour, largement suffisant.
 Brevo, jamais en SMTP. Le relais SMTP concernera Supabase Auth, sujet séparé en
 fin de document.
 
-Il n'y a pas d'expéditeur par défaut chez Brevo : sans domaine authentifié, les
-emails partent de l'adresse validée ci-dessus. Aujourd'hui c'est une adresse
-`@gmail.com`, et il faut savoir ce que ça implique : `gmail.com` publie une
-politique DMARC, donc un `From:` en `@gmail.com` expédié par les serveurs de
-Brevo échoue l'alignement DMARC. Ce n'est pas « une partie des emails en
-indésirables » — c'est structurellement pénalisé. Acceptable pour un test vers
-soi-même, pas pour de vrais joueurs.
+**Depuis le 2026-08-19, l'expéditeur est `notifications@grindrise.fr`** et le
+domaine est authentifié chez Brevo (DKIM et DMARC posés dans la zone OVH).
+L'adresse `@gmail.com` initiale a été supprimée.
 
-Le jour où un domaine authentifié existe — celui de l'étape 4 fera l'affaire —
-**seule la variable `BREVO_SENDER_EMAIL` change** : aucun code à toucher,
-l'identité de l'expéditeur n'apparaît nulle part ailleurs.
+Le détour valait la peine d'être compris : `gmail.com` publie une politique
+DMARC, donc un `From:` en `@gmail.com` expédié par les serveurs de Brevo échoue
+l'alignement — la signature ne peut pas porter sur un domaine qu'on ne contrôle
+pas. Brevo le signalait lui-même : *« Le domaine Freemail n'est pas recommandé »*,
+et *« non conforme aux nouvelles exigences de Google, Yahoo et Microsoft »*.
+Authentifier le domaine ne sert à rien tant que l'expéditeur reste ailleurs.
+
+Le changement a coûté **une seule variable**, `BREVO_SENDER_EMAIL`, sans toucher
+au code : l'identité de l'expéditeur n'apparaît nulle part ailleurs. C'était la
+promesse de la conception, elle a tenu.
+
+Une adresse d'expédition n'a **pas besoin d'exister** comme boîte mail : Brevo
+vérifie qu'on possède le domaine, pas qu'un courrier y arrive. En revanche une
+réponse se perdrait, d'où `BREVO_REPLY_TO` renseigné avec une adresse réelle.
 
 ---
 
@@ -127,9 +132,9 @@ l'identité de l'expéditeur n'apparaît nulle part ailleurs.
 `git@github.com:AlexDDevv/grindrise-notifications.git`, branches `main` et `test`
 à jour côté distant, et l'accès fonctionne.
 
-Reste une décision à prendre avant l'étape 5 : `caprover deploy` demande quelle
-branche déployer, et `main` est en retard sur `test` dans les deux dépôts. Soit
-fusionner `test` dans `main` d'abord, soit déployer `test` en l'assumant.
+**Décision prise** : on déploie depuis `test`, et on fusionnera vers `main`
+seulement quand le test réel sera concluant. `main` reste donc en retard dans
+les deux dépôts, en connaissance de cause.
 
 ---
 
@@ -193,9 +198,8 @@ l'image.
 
 ## 4. Le serveur
 
-**Fait le 2026-08-17**, sauf CapRover lui-même. Le VPS est commandé, durci et
-prêt à recevoir l'installation : les ports qu'elle réclame sont ouverts depuis le
-2026-08-18.
+**Fait les 2026-08-17 et 18.** VPS commandé, durci, CapRover installé et servi
+en HTTPS.
 
 ### Ce qui tourne
 
@@ -236,7 +240,7 @@ elle qui permettra d'installer la clé de la machine personnelle. Ne désactiver
 
 `fail2ban` gère le bruit : 188 tentatives d'intrusion détectées et des bannis dès
 la première journée. C'est ce qui rend inutile le changement de port SSH souvent
-recommandé — voir « Pièges rencontrés ».
+recommandé — voir « Pièges rencontrés — serveur et réseau ».
 
 En cas de perte d'accès IPv4, **l'IPv6 est un accès de secours indépendant** :
 
@@ -253,7 +257,8 @@ surgissantes.
 
 ### Installer CapRover
 
-Il ne reste que cette étape, et **elle exige d'ouvrir les ports d'abord** :
+**L'installation exige d'ouvrir les ports d'abord**, sans quoi elle échoue sur
+`Port timed out: 3000` :
 
 ```bash
 sudo ufw allow 80,443,3000,996,7946,4789,2377/tcp
@@ -333,7 +338,7 @@ tout — ce qui distingue une délégation en attente d'une erreur de saisie :
 curl -s https://rdap.nic.fr/domain/grindrise.fr
 ```
 
-### Pièges rencontrés
+### Pièges rencontrés — serveur et réseau
 
 **`ufw` bloque l'installation de CapRover.** L'installateur teste le port 3000 en
 posant un écouteur ordinaire sur l'hôte — pas un port publié par Docker — donc
@@ -430,33 +435,94 @@ de lui-même en quatre semaines, et `~/.bash_history`.
 
 ## 5. Déployer les apps
 
+**Fait le 2026-08-19.** Les trois apps tournent.
+
 **L'ordre compte.** Le worker doit consommer la queue avant que l'API n'y dépose
 quoi que ce soit : un consommateur en avance sait traiter l'ancien format, un
 producteur en avance empile des jobs que personne ne sait lire.
 
-L'API se déploie pourtant en premier ici, et ce n'est pas une contradiction :
+L'API se déploie pourtant en premier, et ce n'est pas une contradiction :
 **sans `REDIS_URL`, elle ne produit rien** et le signale au démarrage. C'est
 l'ajout de cette variable, en dernier, qui ouvre le robinet.
 
-- [ ] **Redis** — Apps → One-Click Apps → Redis, nommée `redis`. Noter le mot de
-      passe généré, ne pas exposer publiquement. Les deux apps l'atteignent par
+- [x] **Redis** — Apps → **One-Click Apps/Databases** → Redis, nommée `redis`.
+      Noter le mot de passe. Les deux apps l'atteignent par
       `srv-captain--redis:6379` sur le réseau interne.
-- [ ] **API** — créer l'app, renseigner ses variables **sans `REDIS_URL`**, puis
-      `caprover deploy` depuis `~/GrindRise/backend`
-- [ ] **Créer l'app** `notifications`, **sans** cocher « Has Persistent Data »
-- [ ] **Variables** — App Configs, tableau ci-dessous, puis Save & Update
-- [ ] **Cocher « Do not expose as web-app »** — ce service ne publie rien sur
-      internet
-- [ ] **Déployer** — `caprover deploy` depuis `~/grindrise-notifications`, en
-      choisissant l'app `notifications`
-- [ ] **Vérifier les logs** — le worker doit annoncer `Worker à l'écoute`
-- [ ] **Seulement ensuite**, ajouter `REDIS_URL` sur l'app de l'API →
-      Save & Update (l'API redémarre)
-- [ ] **Test réel** — enregistrer une séance qui fait franchir un niveau, et
-      vérifier la réception de l'email
+- [x] **API** — créer l'app, ses variables **sans `REDIS_URL`**, déployer
+- [x] **App `notifications`**, sans « Has Persistent Data », avec
+      « Do not expose as web-app » cochée
+- [x] **Déployer le worker**, vérifier `Worker à l'écoute` dans les logs
+- [x] **Seulement ensuite**, `REDIS_URL` sur l'API → Save & Update
+- [ ] **Test réel** — depuis l'app mobile, voir l'état en tête de document
 
-Un mot de passe Redis mal recopié se voit tout de suite côté worker : `/health`
-répond 503. Côté API, non — d'où le correctif de la section suivante.
+### Déployer depuis un sous-dossier du monorepo
+
+`caprover deploy -b test` lancé depuis `~/GrindRise/backend` affiche
+*« You are not in a git root directory »* et se rabat sur l'envoi du dossier tel
+qu'il est sur le disque — état de travail, pas la branche commitée, et
+potentiellement `node_modules`. Passer par une archive explicite :
+
+```bash
+git -C ~/GrindRise archive --format=tar.gz -o /tmp/api.tar.gz test:backend
+caprover deploy -n grindrise -a api -t /tmp/api.tar.gz
+```
+
+`test:backend` archive le **sous-arbre** : `captain-definition` se retrouve à la
+racine de l'archive, sans le reste du monorepo. 132 Ko au lieu de plusieurs
+centaines de mégaoctets.
+
+Depuis `~/grindrise-notifications`, qui est une racine de dépôt, `-b test`
+fonctionne directement.
+
+### Pièges rencontrés — apps CapRover
+
+**Redis ne s'installe pas par « Create New App ».** Une app ainsi créée tourne
+l'image `caprover/caprover-placeholder-app` — la page d'attente de CapRover — et
+aucun serveur Redis n'existe derrière. Il faut le catalogue **One-Click
+Apps/Databases**, qui déploie la vraie image et génère le mot de passe. Le
+symptôme est trompeur : le worker démarre, échoue à se connecter, et rien ne dit
+que Redis n'existe pas.
+
+**`REDIS_URL` a produit trois pannes différentes pour un même symptôme.** Le log
+`ECONNREFUSED 127.0.0.1:6379` signifie seulement qu'ioredis n'a pas su lire
+l'adresse et s'est rabattu sur son défaut. Causes rencontrées, dans l'ordre :
+la valeur locale du `.env` recopiée telle quelle ; Redis inexistant ; et surtout
+un **mot de passe contenant `#`**, qui ouvre un fragment d'URL et rend l'adresse
+illisible. D'où la règle : **générer le mot de passe Redis en alphanumérique
+pur** (`openssl rand -hex 24`), plutôt qu'encoder des caractères spéciaux.
+
+**Le port du container n'est pas celui qu'on croit.** CapRover proxie vers le
+port **80** par défaut ; l'API écoute sur **3000**. Sans `Container HTTP Port`
+réglé à `3000` dans App Configs, on obtient une 502 sans explication.
+
+**Activer « Force HTTPS ».** Une app exposée répond en HTTP clair tant que la
+case n'est pas cochée. Pour l'API, cela signifie l'en-tête
+`Authorization: Bearer <jeton de session>` en clair sur le réseau.
+
+**Des erreurs au démarrage sont normales.** Quand Redis et un consommateur
+redémarrent ensemble, l'alias `srv-captain--redis` n'est pas immédiatement
+résolvable et le worker journalise quelques `ENOTFOUND` avant de se connecter.
+Elles tiennent dans la première seconde ; ce qui compte est qu'elles cessent.
+
+### Vérifier sans se fier aux logs
+
+Les logs affichent l'historique : une erreur ancienne y reste visible. Trois
+contrôles factuels, depuis le serveur :
+
+```bash
+# la sonde du worker — 503 si Redis n'est pas joignable
+docker run --rm --network <reseau> curlimages/curl -s \
+  http://srv-captain--notifications:3001/health
+
+# le producteur a-t-il vraiment une connexion ouverte ? (6379 = 0x18EB)
+docker exec <container-api> sh -c 'cat /proc/net/tcp' | awk '$3 ~ /:18EB$/ && $4=="01"'
+
+# erreurs des 2 dernieres minutes seulement
+docker service logs notifications --since 2m | grep '"level":"error"'
+```
+
+Le `CLIENT LIST` de Redis, lui, **induit en erreur** : sur un réseau overlay il
+montre l'adresse de la répartition de charge, pas celle des containers.
 
 ### Variables de l'app `notifications`
 
@@ -483,19 +549,46 @@ Optionnelles :
 > brut des réponses d'erreur de Brevo, qui peut contenir l'adresse email du
 > destinataire. À n'activer que ponctuellement, le temps d'un diagnostic.
 
-### Variables à ajouter sur l'app de l'API
+### Variables de l'app `api`
 
-| Variable | Effet |
+D'après `backend/src/config/env.config.ts`, et non `.env.example` qui en liste
+davantage. Requises — l'API crashe au boot si l'une manque :
+
+| Variable | Note |
 |---|---|
-| `REDIS_URL` | même valeur que ci-dessus. Absente, l'API ne produit aucune notification et le signale au démarrage |
-| `NOTIFICATIONS_QUEUE_NAME` | seulement si le nom par défaut a été changé côté worker |
+| `SUPABASE_URL` | URL nue, sans `/rest/v1` ni aucun suffixe de chemin |
+| `SUPABASE_SERVICE_ROLE_KEY` | contourne la RLS, à traiter comme un mot de passe root |
+
+Optionnelles :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `REDIS_URL` | aucune | **à ajouter en dernier.** Absente, l'API ne produit rien et le signale au démarrage |
+| `PORT` | `3000` | inutile de la déclarer |
+| `NOTIFICATIONS_QUEUE_NAME` | `notifications` | seulement si le nom a changé côté worker |
+| `REVENUECAT_WEBHOOK_SECRET` | aucune | seulement quand le webhook sera branché |
+
+`REDIS_URL` est volontairement optionnelle côté API, contrairement à la règle du
+crash au boot : l'imposer rendrait Redis obligatoire pour tout développement
+local du backend.
+
+Deux réglages hors variables, dans App Configs :
+
+| Réglage | Valeur |
+|---|---|
+| Container HTTP Port | **`3000`** — sinon 502 |
+| HTTP Settings | HTTPS sur `api.apps.grindrise.fr` + **Force HTTPS** |
 
 ---
 
-## À corriger avant de déployer
+## Corrigé : le blocage de `POST /workouts`
 
-**Une `REDIS_URL` erronée fige `POST /workouts` côté API.** Mesuré le
-2026-08-17, avec les options exactes de `notifications.queue.ts` :
+**Corrigé le 2026-08-19** par le commit `dd36349` du monorepo. Conservé ici
+parce que le raisonnement resservira à chaque fois qu'un appel réseau entrera
+dans le chemin d'une requête.
+
+**Une `REDIS_URL` erronée figeait `POST /workouts`.** Mesuré le 2026-08-17, avec
+les options exactes de `notifications.queue.ts` :
 
 | Situation | `queue.add()` | Effet sur la requête |
 |---|---|---|
@@ -512,11 +605,14 @@ démarrer normalement, `/health` répondre, tout paraître sain — jusqu'à ce 
 première séance qui fait franchir un niveau fige la requête du joueur.
 
 Le correctif tient dans `enqueueLevelUp` : un `Promise.race` avec un délai de
-garde de quelques secondes autour du `add`, l'appel étant best-effort de toute
-façon. Borner les tentatives de connexion serait pire — la queue resterait morte
+garde autour du `add`, l'appel étant best-effort de toute façon. Borner les
+tentatives de connexion d'ioredis aurait été pire — la queue serait restée morte
 après le retour de Redis.
 
-À faire dans le monorepo, avant l'étape 5.
+La leçon générale : **un `try/catch` protège d'une erreur, pas d'une attente.**
+Tout appel réseau placé dans le chemin d'une requête HTTP a besoin d'un délai de
+garde explicite, faute de quoi la panne se manifeste par un silence plutôt que
+par une exception.
 
 ---
 
@@ -530,9 +626,17 @@ Rien de bloquant pour un premier déploiement, mais à connaître.
   automatiser avant de brancher le déploiement automatique sur push. Le script
   suppose le monorepo en `~/GrindRise` ; ailleurs, lui passer le chemin en
   argument ou par `GRINDRISE_API_PATH`.
-- **Le nom d'expéditeur n'est pas aligné sur un domaine.** Voir l'étape 1 : tant
-  que `BREVO_SENDER_EMAIL` reste une adresse `@gmail.com`, la délivrabilité est
-  structurellement dégradée. Le domaine de l'étape 4 résout les deux.
+- **L'URL de l'API n'est fournie à aucun build mobile.** `EXPO_PUBLIC_API_URL`
+  est **inlinée dans le bundle au moment du build**, pas lue au démarrage :
+  la changer n'a d'effet qu'après reconstruction. Elle ne vit aujourd'hui que
+  dans le `.env` local, et **il n'existe pas de `eas.json`** — un build EAS
+  produirait donc une app sans URL d'API, où `isApiConfigured` vaut `false` et
+  toute écriture de jeu échoue en silence. À traiter avant le premier build de
+  production.
+- **Aucune boîte derrière `notifications@grindrise.fr`.** L'expédition n'en a
+  pas besoin, mais un joueur qui écrirait à cette adresse n'atteindrait
+  personne. `BREVO_REPLY_TO` couvre les réponses ; une redirection OVH gratuite
+  rendrait l'adresse réellement joignable.
 - **Pas de désabonnement.** Un email de palier n'est pas strictement
   transactionnel : le joueur ne l'a pas demandé. Ni lien de désinscription, ni
   en-tête `List-Unsubscribe`, ni préférence en base. À prévoir avant un vrai
