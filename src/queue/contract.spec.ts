@@ -73,3 +73,27 @@ describe('assertLevelUpJob', () => {
     expect(() => assertLevelUpJob({ ...valid, occurredAt: '' })).toThrow(/occurredAt/);
   });
 });
+
+describe('assertLevelUpJob — lien de désabonnement', () => {
+  const url = 'https://api.exemple.test/notifications/unsubscribe?token=abc.def';
+
+  it('conserve le lien quand le producteur en fournit un', () => {
+    expect(assertLevelUpJob({ ...valid, unsubscribeUrl: url }).unsubscribeUrl).toBe(url);
+  });
+
+  it("accepte un job sans lien — l'ancien format reste traitable", () => {
+    // L'invariant de déploiement : le worker part AVANT l'API, il consomme donc
+    // des jobs empilés par une API qui ne connaissait pas ce champ. Les refuser
+    // les tuerait en InvalidJobError, donc sans reprise possible.
+    expect(assertLevelUpJob(valid).unsubscribeUrl).toBeUndefined();
+  });
+
+  it('rejette un lien vide, qui trahit un producteur incohérent', () => {
+    expect(() => assertLevelUpJob({ ...valid, unsubscribeUrl: '   ' })).toThrow(
+      InvalidJobError,
+    );
+    expect(() => assertLevelUpJob({ ...valid, unsubscribeUrl: 42 })).toThrow(
+      /unsubscribeUrl/,
+    );
+  });
+});

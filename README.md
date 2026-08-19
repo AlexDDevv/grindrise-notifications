@@ -104,6 +104,13 @@ travers.
 si l'un a divergé sans l'autre — à lancer après toute modification du contrat,
 avant de commiter.
 
+Le champ `unsubscribeUrl` illustre la règle : le producteur le renseigne
+toujours, mais il est déclaré **facultatif** dans le contrat. C'est ce qui
+permet au worker neuf — déployé en premier — de traiter les jobs empilés par
+l'API d'avant, qui ne le connaissait pas. Le rendre obligatoire les tuerait en
+`InvalidJobError`, donc sans reprise possible. Ce worker ne fabrique aucun
+jeton : il recopie l'URL signée par l'API dans le pied de l'email.
+
 ## Déployer sur CapRover
 
 **Tout est dans [`DEPLOIEMENT.md`](DEPLOIEMENT.md)** : le serveur, CapRover, le

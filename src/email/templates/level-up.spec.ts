@@ -49,3 +49,35 @@ describe('renderLevelUpEmail', () => {
     expect(renderLevelUpEmail(job).text.trim().length).toBeGreaterThan(0);
   });
 });
+
+describe('renderLevelUpEmail — désabonnement', () => {
+  const url = 'https://api.exemple.test/notifications/unsubscribe?token=abc.def';
+  const abonne = { ...job, unsubscribeUrl: url };
+
+  it('place le lien dans les deux versions du message', () => {
+    const { html, text } = renderLevelUpEmail(abonne);
+
+    expect(text).toContain(url);
+    expect(html).toContain(`href="${url}"`);
+  });
+
+  it('précise que les codes de connexion ne sont pas concernés', () => {
+    // Se désabonner ne doit jamais ressembler à couper tous les emails du
+    // service : quelqu'un qui le croirait ne cliquerait pas, ou ne pourrait
+    // plus se connecter sans comprendre pourquoi.
+    const { html } = renderLevelUpEmail(abonne);
+
+    expect(html).toContain('codes de connexion');
+  });
+
+  it('reste envoyable sans lien — le cas des jobs empilés avant la mesure', () => {
+    // Le worker se déploie AVANT l'API : pendant cette fenêtre, il traite des
+    // jobs produits par une API qui ne connaissait pas ce champ. Ils doivent
+    // partir, pas mourir en erreur.
+    const { html, text } = renderLevelUpEmail(job);
+
+    expect(html).not.toContain('unsubscribe');
+    expect(text).not.toContain('unsubscribe');
+    expect(text).toContain('Bravo');
+  });
+});

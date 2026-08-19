@@ -93,6 +93,10 @@ async function main(): Promise<void> {
     levelBefore,
     levelAfter,
     occurredAt: new Date().toISOString(),
+    // Lien factice : l'API n'est pas dans la boucle, ce script n'a pas le
+    // secret de signature. Il sert à voir le pied de désabonnement dans
+    // l'email reçu — cliquer dessus ne mène nulle part, c'est attendu.
+    unsubscribeUrl: 'https://api.exemple.test/notifications/unsubscribe?token=exemple.factice',
   };
 
   // Même validation que le producteur, avec la même fonction : une incohérence

@@ -64,6 +64,23 @@ export type LevelUpJob = {
   levelAfter: number;
   /** ISO 8601. */
   occurredAt: string;
+  /**
+   * Lien de désabonnement signé, à placer en pied de l'email.
+   *
+   * Composé par l'API, qui seule détient le secret de signature : le worker ne
+   * fabrique aucun jeton, il recopie une URL. C'est la même règle que pour
+   * l'adresse email — tout ce qu'il faut pour écrire le message est dans le
+   * payload, le worker ne consulte rien.
+   *
+   * **Facultatif dans le type, toujours présent en pratique.** Le producteur le
+   * renseigne systématiquement, et refuse d'empiler le job s'il ne peut pas le
+   * composer. Il reste optionnel ici pour tenir l'invariant de déploiement
+   * énoncé en tête de fichier : le worker part AVANT l'API, il doit donc savoir
+   * traiter les jobs empilés par l'API précédente, qui ne connaissait pas ce
+   * champ. Le rendre obligatoire ferait mourir ces jobs-là en `InvalidJobError`
+   * — donc sans reprise, définitivement.
+   */
+  unsubscribeUrl?: string;
 };
 
 /** Job illisible ou incohérent : à ne jamais retenter. */
@@ -112,6 +129,16 @@ export function assertLevelUpJob(data: unknown): LevelUpJob {
     throw new InvalidJobError(`Champ username invalide : ${String(job.username)}.`);
   }
 
+  // Absent : job produit par une API antérieure au désabonnement, à traiter
+  // quand même. Présent mais vide ou d'un autre type : incohérence de
+  // producteur, à ne pas retenter.
+  if (
+    job.unsubscribeUrl !== undefined &&
+    (typeof job.unsubscribeUrl !== 'string' || job.unsubscribeUrl.trim() === '')
+  ) {
+    throw new InvalidJobError(`Champ unsubscribeUrl invalide : ${String(job.unsubscribeUrl)}.`);
+  }
+
   const levelBefore = level('levelBefore');
   const levelAfter = level('levelAfter');
 
@@ -129,5 +156,6 @@ export function assertLevelUpJob(data: unknown): LevelUpJob {
     levelBefore,
     levelAfter,
     occurredAt: text('occurredAt'),
+    unsubscribeUrl: job.unsubscribeUrl as string | undefined,
   };
 }
